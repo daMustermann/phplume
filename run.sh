@@ -2,8 +2,8 @@
 # phplume launcher. Downloads the versioned single-file scanner, verifies it, runs it.
 set -eu
 
-phplume_url='https://raw.githubusercontent.com/daMustermann/phplume/v0.3.0/phplume.py'
-phplume_sha='073f89765df2481634bb957401e3e6564977077cce3010c61e551785b6d9b972'
+phplume_url='https://raw.githubusercontent.com/daMustermann/phplume/v0.3.1/phplume.py'
+phplume_sha='9cedf4bddd872b01f08815d39c4b2272670586e3ece92ab6e3ad74369fecded8'
 phplume_python=''
 for phplume_candidate in python3 python; do
     if command -v "$phplume_candidate" >/dev/null 2>&1 && "$phplume_candidate" -c 'import sys; sys.exit(sys.version_info < (3, 10))' 2>/dev/null; then

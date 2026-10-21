@@ -26,7 +26,7 @@ import time
 from urllib.parse import quote, urlsplit
 import webbrowser
 
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 REVIEWED = "2026-10-22"
 REPO = "https://github.com/daMustermann/phplume"
 ADVISORIES = [

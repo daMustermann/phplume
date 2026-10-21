@@ -38,7 +38,7 @@ On Windows, use `py -3 phplume.py`.
 
 ```text
   /p  phplume
-      Find the PHP you need to fix.                    v0.3.0
+      Find the PHP you need to fix.                    v0.3.1
       LOCAL NETWORK INVENTORY  /  ADVISORIES 2026-10-22
 
   POTENTIALLY AFFECTED    http://192.168.50.10:80/

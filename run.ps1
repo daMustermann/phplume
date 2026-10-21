@@ -2,8 +2,8 @@
 param([Parameter(ValueFromRemainingArguments = $true)][string[]]$ScanArgs)
 
 $phplumeAsFile = $MyInvocation.MyCommand.CommandType -eq 'ExternalScript'
-$phplumeUrl = 'https://raw.githubusercontent.com/daMustermann/phplume/v0.3.0/phplume.py'
-$phplumeSha = '073f89765df2481634bb957401e3e6564977077cce3010c61e551785b6d9b972'
+$phplumeUrl = 'https://raw.githubusercontent.com/daMustermann/phplume/v0.3.1/phplume.py'
+$phplumeSha = '9cedf4bddd872b01f08815d39c4b2272670586e3ece92ab6e3ad74369fecded8'
 $phplumePython = $null
 $phplumePrefix = @()
 $phplumeDirectory = $null
@@ -29,7 +29,13 @@ try {
     $phplumeFile = Join-Path $phplumeDirectory 'phplume.py'
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     Invoke-WebRequest -UseBasicParsing -Uri $phplumeUrl -OutFile $phplumeFile -TimeoutSec 60 -ErrorAction Stop
-    if ((Get-FileHash -LiteralPath $phplumeFile -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant() -ne $phplumeSha) {
+    # Use .NET directly: nested agent shells may not autoload Get-FileHash.
+    $phplumeHasher = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $phplumeActualSha = [BitConverter]::ToString($phplumeHasher.ComputeHash([System.IO.File]::ReadAllBytes($phplumeFile))).Replace('-', '').ToLowerInvariant()
+    }
+    finally { $phplumeHasher.Dispose() }
+    if ($phplumeActualSha -ne $phplumeSha) {
         throw 'Scanner checksum mismatch. Download stopped; please check the GitHub release.'
     }
     & $phplumePython @phplumePrefix $phplumeFile @ScanArgs
