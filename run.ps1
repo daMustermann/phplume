@@ -2,8 +2,8 @@
 param([Parameter(ValueFromRemainingArguments = $true)][string[]]$ScanArgs)
 
 $phplumeAsFile = $MyInvocation.MyCommand.CommandType -eq 'ExternalScript'
-$phplumeUrl = 'https://raw.githubusercontent.com/daMustermann/phplume/v0.1.0/phplume.py'
-$phplumeSha = 'c76924b8cf8f6b06cc8edbddc419f1154491d8f6f5cab70f4dc13bc90ee8b4d9'
+$phplumeUrl = 'https://raw.githubusercontent.com/daMustermann/phplume/v0.2.0/phplume.py'
+$phplumeSha = 'f15f541797dd2f16e5d252c6b67764af715f9a412eae8e6a0fa7d65dc27a9761'
 $phplumePython = $null
 $phplumePrefix = @()
 $phplumeDirectory = $null
