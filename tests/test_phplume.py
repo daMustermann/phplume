@@ -1,4 +1,5 @@
 import contextlib
+import asyncio
 import io
 import json
 import socket
@@ -11,7 +12,7 @@ import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import phplume as app
 
@@ -82,6 +83,12 @@ class ScopeTests(unittest.TestCase):
 
     def test_ipv6_url(self):
         self.assertEqual(self.plan(["http://[::1]:8080/"])[0]["url"], "http://[::1]:8080/")
+
+    def test_repeated_virtual_host_paths_share_one_validated_dns_snapshot(self):
+        with patch.object(app, "resolve", return_value=["192.168.1.5"]) as resolve:
+            targets = self.plan(["https://wiki.lan/a/", "https://wiki.lan/b/"])
+        resolve.assert_called_once_with("wiki.lan")
+        self.assertEqual(len(targets), 2)
 
     def test_ipv6_link_local_scope_is_retained(self):
         answer = [(socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("fe80::1234", 0, 0, 7))]
@@ -306,6 +313,147 @@ class ReportAndLocalTests(unittest.TestCase):
         for args in (["--workers", "0"], ["--timeout", "nan"], ["--ports", "0"], ["--open", "--no-report"]):
             with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
                 app.main(args)
+
+
+class SpeedTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        cls.thread.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+        cls.thread.join()
+
+    def discover(self, targets, retries=1, workers=8):
+        return asyncio.run(app.discover_tcp(targets, workers, .1, retries, app.Console(quiet=True)))
+
+    def test_real_discovery_deduplicates_ports_without_http_and_preserves_virtual_hosts(self):
+        with socket.socket() as closed:
+            closed.bind(("127.0.0.1", 0))
+            targets = [app.endpoint(host, "127.0.0.1", self.server.server_port, "http", path)
+                       for host, path in (("localhost", "/old"), ("wiki.lan", "/fixed"))]
+            targets.append(app.endpoint("localhost", "127.0.0.1", closed.getsockname()[1], "http", "/"))
+            before = len(Handler.hits)
+            discovery = self.discover(targets)
+            self.assertEqual(len(Handler.hits), before, "Discovery must send no HTTP")
+            self.assertEqual(discovery["unique_endpoints"], 2)
+            self.assertEqual(discovery["open_endpoints"], 1)
+            # Windows may delay ECONNREFUSED longer than the deliberately short timeout.
+            self.assertIn(discovery["connection_attempts"], (2, 3))
+            ready, skipped = app.select_discovered(targets, discovery)
+            self.assertEqual(ready, targets[:2])
+            self.assertEqual(skipped[0]["probe_stage"], "discovery")
+            self.assertFalse(skipped[0]["http_attempted"])
+            self.assertEqual(skipped[0]["state"], "unreachable")
+
+    def test_real_ipv6_tcp_discovery(self):
+        if not socket.has_ipv6:
+            self.skipTest("IPv6 not available")
+        with socket.socket(socket.AF_INET6) as listener:
+            try:
+                listener.bind(("::1", 0))
+                listener.listen(1)
+            except OSError:
+                self.skipTest("IPv6 loopback is unavailable")
+            targets = [app.endpoint("::1", "::1", listener.getsockname()[1], "http", "/")]
+            discovery = self.discover(targets)
+        self.assertEqual(discovery["open_endpoints"], 1)
+
+    def test_timeout_is_retried_and_later_open_service_is_scanned(self):
+        targets = [app.endpoint("localhost", "127.0.0.1", 8080, "http", "/")]
+        connect = AsyncMock(side_effect=[{"status": "timeout", "duration_ms": 100}, {"status": "open", "duration_ms": 2}])
+        with patch.object(app, "tcp_connect", connect):
+            discovery = self.discover(targets)
+        self.assertEqual(discovery["connection_attempts"], 2)
+        self.assertEqual(discovery["endpoints"][0]["duration_ms"], 102)
+        self.assertEqual(app.select_discovered(targets, discovery)[0], targets)
+
+    def test_concurrency_and_descriptor_limits_are_respected(self):
+        active = peak = 0
+        async def connect(*args):
+            nonlocal active, peak
+            active += 1
+            peak = max(peak, active)
+            await asyncio.sleep(.005)
+            active -= 1
+            return {"status": "open", "duration_ms": 5}
+        targets = [app.endpoint("localhost", "127.0.0.1", p, "http", "/") for p in range(8000, 8020)]
+        with patch.object(app, "tcp_connect", connect), patch.object(app, "socket_concurrency_limit", return_value=3):
+            discovery = self.discover(targets, workers=4096)
+        self.assertEqual(peak, 3)
+        self.assertEqual(discovery["effective_concurrency"], 3)
+        self.assertEqual(discovery["open_endpoints"], 20)
+
+    def test_speed_cli_keeps_http_evidence_and_metadata(self):
+        run = subprocess.run([sys.executable, "phplume.py", f"http://127.0.0.1:{self.server.server_port}/old",
+                              "--speed", "--json", "--quiet", "--no-report"], capture_output=True, text=True)
+        self.assertEqual(run.returncode, 1, run.stderr)
+        report = json.loads(run.stdout)
+        self.assertEqual(report["summary"]["potentially_affected"], 1)
+        self.assertEqual(report["scope"]["scan_mode"], "speed")
+        self.assertEqual(report["scope"]["completed_requests"], 1)
+        self.assertEqual(report["scope"]["discovery_skipped_requests"], 0)
+        self.assertEqual(report["discovery"]["connection_attempts"], 1)
+        self.assertIn("SPEED MODE", app.render_html(report))
+        self.assertIn("discovery_skipped_requests", app.render_agent_markdown(report))
+
+    def test_all_skipped_endpoints_are_accounted_and_inconclusive(self):
+        output = io.StringIO()
+        connect = AsyncMock(return_value={"status": "timeout", "duration_ms": 100})
+        with patch.object(app, "tcp_connect", connect), patch.object(app, "probe") as probe, contextlib.redirect_stdout(output):
+            code = app.main(["http://127.0.0.1:12345/", "--speed", "--json", "--quiet", "--no-report"])
+        report = json.loads(output.getvalue())
+        self.assertEqual(code, 2)
+        self.assertEqual(report["scope"]["completed_requests"], 0)
+        self.assertEqual(report["scope"]["planned_requests"], 1)
+        self.assertEqual(report["scope"]["discovery_skipped_requests"], 1)
+        self.assertEqual(report["discovery"]["connection_attempts"], 2)
+        probe.assert_not_called()
+
+    def test_local_socket_errors_stay_review_not_fixed(self):
+        targets = [app.endpoint("localhost", "127.0.0.1", 8080, "http", "/")]
+        connect = AsyncMock(return_value={"status": "error", "duration_ms": 0, "error": "Too many open files"})
+        with patch.object(app, "tcp_connect", connect):
+            discovery = self.discover(targets, retries=0)
+        self.assertEqual(app.select_discovered(targets, discovery)[1][0]["state"], "review")
+        self.assertEqual(discovery["connection_attempts"], 1)
+
+    def test_speed_does_not_bypass_scope_validation(self):
+        with patch.object(app, "tcp_connect") as connect:
+            self.assertEqual(app.main(["8.8.8.8", "--speed", "--quiet", "--no-report"]), 3)
+        connect.assert_not_called()
+
+    def test_high_workers_are_opt_in_and_settings_validated(self):
+        for flags in (["--workers", "65"], ["--discovery-workers", "100"],
+                      ["--speed", "--workers", "1025"], ["--speed", "--discovery-workers", "4097"],
+                      ["--speed", "--discovery-timeout", "nan"], ["--speed", "--discovery-retries", "4"]):
+            with self.subTest(flags=flags), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                app.main(["--demo", "--quiet", "--no-report", *flags])
+        self.assertEqual(app.main(["--demo", "--quiet", "--no-report", "--speed", "--workers", "1024", "--discovery-workers", "4096"]), 1)
+
+    def test_bounded_http_worker_window(self):
+        active = peak = 0
+        lock = threading.Lock()
+        def probe(target, *args):
+            nonlocal active, peak
+            with lock:
+                active += 1
+                peak = max(peak, active)
+            time.sleep(.01)
+            with lock:
+                active -= 1
+            return {"state": "unreachable", "target": target["url"]}
+        args = app.parser().parse_args([])
+        args.workers = 3
+        targets = [app.endpoint("localhost", "127.0.0.1", 8080, "http", f"/{i}") for i in range(15)]
+        with patch.object(app, "probe", probe):
+            results = app.scan_http(targets, args, app.Console(quiet=True))
+        self.assertEqual(len(results), 15)
+        self.assertEqual(peak, 3)
 
 
 if __name__ == "__main__":

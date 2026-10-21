@@ -2,8 +2,8 @@
 # phplume launcher. Downloads the versioned single-file scanner, verifies it, runs it.
 set -eu
 
-phplume_url='https://raw.githubusercontent.com/daMustermann/phplume/v0.2.0/phplume.py'
-phplume_sha='f15f541797dd2f16e5d252c6b67764af715f9a412eae8e6a0fa7d65dc27a9761'
+phplume_url='https://raw.githubusercontent.com/daMustermann/phplume/v0.3.0/phplume.py'
+phplume_sha='073f89765df2481634bb957401e3e6564977077cce3010c61e551785b6d9b972'
 phplume_python=''
 for phplume_candidate in python3 python; do
     if command -v "$phplume_candidate" >/dev/null 2>&1 && "$phplume_candidate" -c 'import sys; sys.exit(sys.version_info < (3, 10))' 2>/dev/null; then
@@ -27,7 +27,7 @@ curl --fail --silent --show-error --location --proto '=https' --proto-redir '=ht
 "$phplume_python" -c 'import hashlib,pathlib,sys; actual=hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest(); sys.exit(0 if actual == sys.argv[2] else "Scanner checksum mismatch. Download stopped; please check the GitHub release.")' "$phplume_tmp/phplume.py" "$phplume_sha"
 # A curl | sh entry point must restore terminal input for the guided wizard.
 phplume_exit=0
-if [ "$#" -eq 0 ] && ( : </dev/tty ) 2>/dev/null; then
+if ( : </dev/tty ) 2>/dev/null; then
     "$phplume_python" "$phplume_tmp/phplume.py" "$@" </dev/tty || phplume_exit=$?
 else
     "$phplume_python" "$phplume_tmp/phplume.py" "$@" || phplume_exit=$?

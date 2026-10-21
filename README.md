@@ -38,7 +38,7 @@ On Windows, use `py -3 phplume.py`.
 
 ```text
   /p  phplume
-      Find the PHP you need to fix.                    v0.2.0
+      Find the PHP you need to fix.                    v0.3.0
       LOCAL NETWORK INVENTORY  /  ADVISORIES 2026-10-22
 
   POTENTIALLY AFFECTED    http://192.168.50.10:80/
@@ -120,6 +120,48 @@ curl -fsSL https://raw.githubusercontent.com/daMustermann/phplume/main/run.sh | 
 
 Only inspect systems you own or are authorized to assess. The scanner accepts RFC 1918, loopback, link-local and IPv6 ULA addresses; public targets are rejected. Explicit IPv6 addresses and small CIDRs work; the wizard lists IPv4 interfaces. It does not automatically enumerate an IPv6 LAN, discover VLANs or identify every virtual host. DNS names with any out-of-scope answer are rejected. Connections use validated addresses, ignore HTTP proxy environment variables and do not follow redirects.
 
+## Speed mode
+
+Add **`--speed`** for a two-stage scan with substantially higher connection concurrency:
+
+```sh
+python3 phplume.py 192.168.1.0/24 --speed
+```
+
+1. **Fast TCP discovery:** up to 512 asynchronous connections by default, directly to the selected web ports on the validated addresses. Each unique IP/port pair is checked once, even when several paths or virtual hosts share it. A check has a 350 ms timeout; timeouts and connection errors get one retry. No ping response or administrator access is required.
+2. **PHP inspection:** only TCP-open endpoints receive the normal HTTP(S) version/evidence checks, with up to 256 HTTP workers by default. The HTTP timeout remains 3 seconds. Known paths, virtual host headers and TLS SNI are preserved.
+
+**This mode can heavily load the network, router connection tables, wireless links and target services.** Short discovery timeouts can miss sleeping devices, congestion and rate-limited services. Skipped targets remain explicitly unverified in every report; use a normal scan or a longer discovery timeout for important missed systems. A TCP-open port is only a candidate for HTTP inspection, not evidence of PHP.
+
+| Setting | Normal default / limit | Speed default / limit |
+| --- | --- | --- |
+| HTTP workers (`--workers`) | 16 / 64 | 256 / 1,024 |
+| TCP discovery workers (`--discovery-workers`) | No discovery phase | 512 / 4,096 |
+| TCP timeout (`--discovery-timeout`) | Not applicable | 0.35 seconds / 0.05–5 seconds |
+| Timeout/error retries (`--discovery-retries`) | Not applicable | 1 / 0–3 |
+
+Concurrency is reduced when a POSIX process has insufficient file descriptors; the console and reports record the effective limits. High HTTP worker counts also need sufficient memory and OS thread/socket capacity. Speed mode keeps the existing scope caps and never expands the chosen network.
+
+**More aggressive:**
+
+```sh
+python3 phplume.py 192.168.1.0/24 --speed --workers 512 --discovery-workers 2048 --discovery-timeout 0.15 --discovery-retries 0
+```
+
+**Through the GitHub launcher:**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/daMustermann/phplume/main/run.sh | sh -s -- 192.168.1.0/24 --speed
+```
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/daMustermann/phplume/main/run.ps1))) '192.168.1.0/24' '--speed'
+```
+
+Agents can use the same options when the user authorizes the extra network load. Reports include `scope.scan_mode`, actual HTTP checks, `scope.discovery_skipped_requests` and a `discovery` object with each TCP outcome, connection attempts, phase duration and effective concurrency. A skipped endpoint has `probe_stage: "discovery"` and `http_attempted: false`; it must not be interpreted as a clean result.
+
+Run `python3 scripts/benchmark_speed.py` for a reproducible comparison using healthy, nonresponsive and refused services on **loopback only**. The benchmark checks that healthy PHP findings survive the increased concurrency and reports measured timings. Real LAN gains depend on latency, filtering, service load and available resources; speed mode can be slower on a tiny already-responsive scope because discovery adds a TCP connection.
+
 ## Read the results correctly
 
 | Result | Meaning | What to do |
@@ -144,7 +186,7 @@ First fixed upstream releases: **8.2.35 · 8.3.36 · 8.4.27 · 8.5.12**. Use a c
 ## How the scan works
 
 1. Resolve and validate the local scope before contacting web services. Default cap: 1,024 addresses; explicit maximum: 4,096 addresses and 32,768 endpoint/path requests.
-2. Send one ordinary GET to each selected address/port/path, with at most 16 requests in parallel by default. Ports default to 80, 443, 8080 and 8443. The default path is `/`. Responses are bounded to 64 KiB; requests have a configurable timeout.
+2. In normal mode, send one ordinary GET to each selected address/port/path, with at most 16 requests in parallel by default. Speed mode first discovers open TCP ports, then checks those endpoints with up to 256 HTTP workers by default. Ports default to 80, 443, 8080 and 8443. The default path is `/`. Responses are bounded to 64 KiB; requests have a configurable timeout.
 3. Read PHP version headers and weak application indicators. Retain evidence, discard cookie values and response bodies, and assess all observed versions.
 4. Optionally invoke trusted local PHP executables with `-n -v`, without loading their INI files.
 5. Save dated HTML, JSON and agent Markdown reports. POSIX report files use mode 0600; Windows uses inherited filesystem ACLs. Reports contain internal hostnames and addresses; share them accordingly.

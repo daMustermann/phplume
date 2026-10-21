@@ -1,6 +1,6 @@
 # PHP security research
 
-Reviewed **22 October 2026**. This is a dated research snapshot, not a live vulnerability feed. phplume 0.1.0 covers the following two advisories only.
+Reviewed **22 October 2026**. This is a dated research snapshot, not a live vulnerability feed. The bundled phplume catalog covers the following two advisories only.
 
 ## Verified advisories
 
@@ -41,6 +41,6 @@ PHP 8.1 and earlier are outside current upstream security support. Some vendors 
 
 ## Deliberately excluded detection methods
 
-The scanner sends ordinary GET requests to explicitly selected paths, at most 64 KiB of response body is examined, redirects are not followed, and response bodies are not saved. It sends no multipart uploads, oversized request bodies, OOM triggers, memory-corruption probes, authentication guesses, shell commands or remote PHP code. It does not request phpinfo files or crawl the site.
+The scanner sends ordinary GET requests to explicitly selected paths, at most 64 KiB of response body is examined, redirects are not followed, and response bodies are not saved. Optional speed mode first checks the selected TCP ports with asynchronous connect attempts and skips HTTP on ports that were not observed open. Those skips remain incomplete coverage; short discovery timeouts can miss real services. It sends no multipart uploads, oversized request bodies, OOM triggers, memory-corruption probes, authentication guesses, shell commands or remote PHP code. It does not request phpinfo files or crawl the site.
 
 This makes the tool useful for triage and asset discovery. It cannot certify exploitability, absence of PHP, absence of compromise or completeness of an enterprise inventory. Consult service/package inventory and vendor advisories for systems the network view cannot identify.
