@@ -1,0 +1,34 @@
+name: Verify
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ['3.10', '3.13']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Test detector, scope, HTTP and reports
+        run: python -m unittest discover -s tests -v
+      - name: Check launchers match the scanner
+        run: python scripts/check_release.py
+      - name: Compile standalone scanner
+        run: python -m py_compile phplume.py
+      - name: Check POSIX launcher syntax
+        if: runner.os != 'Windows'
+        run: sh -n run.sh
+      - name: Check PowerShell launcher syntax
+        shell: pwsh
+        run: |
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$PWD/run.ps1", [ref]$null, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count) { throw ($parseErrors | Out-String) }

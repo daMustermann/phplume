@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+.preview/
+phplume-reports/
+.venv/
+*.pem
+*.key

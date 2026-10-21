@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400" role="img" aria-labelledby="title desc">
+  <title id="title">phplume</title>
+  <desc id="desc">A folded green letter p and a light beam. Find the PHP you need to fix.</desc>
+  <rect width="1200" height="400" rx="12" fill="#f7f6f3"/>
+  <path d="M72 54h1056M72 346h1056" stroke="#dddcd6"/>
+  <g transform="translate(94 108)">
+    <path d="M24 171V53L79 6l55 47v69l-55 49V91l-30 28" fill="none" stroke="#346538" stroke-width="19" stroke-linejoin="miter"/>
+    <path d="m160 35 25-14m-16 70h29m-38 55 25 14" stroke="#a8b7a0" stroke-width="6"/>
+  </g>
+  <text x="338" y="219" fill="#202720" font-family="Helvetica Neue,Arial,sans-serif" font-size="116" font-weight="750" letter-spacing="-7">phplume</text>
+  <text x="343" y="272" fill="#65645f" font-family="Helvetica Neue,Arial,sans-serif" font-size="26">Find the PHP you need to fix.</text>
+  <text x="75" y="84" fill="#65645f" font-family="Consolas,monospace" font-size="12" letter-spacing="2">LOCAL NETWORK INVENTORY</text>
+  <text x="1127" y="324" text-anchor="end" fill="#65645f" font-family="Consolas,monospace" font-size="12" letter-spacing="1">WINDOWS / LINUX / macOS</text>
+</svg>
