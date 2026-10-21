@@ -122,11 +122,21 @@ Only inspect systems you own or are authorized to assess. The scanner accepts RF
 
 ## Speed mode
 
-Add **`--speed`** for a two-stage scan with substantially higher connection concurrency:
+Start a two-stage scan with substantially higher connection concurrency directly from GitHub. These commands open the guided setup; choose **My local network** and select your interface.
+
+**Windows · PowerShell**
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/daMustermann/phplume/v0.3.1/run.ps1))) '--speed'
+```
+
+**Linux / macOS · shell**
 
 ```sh
-python3 phplume.py 192.168.1.0/24 --speed
+curl -fsSL https://raw.githubusercontent.com/daMustermann/phplume/v0.3.1/run.sh | sh -s -- --speed
 ```
+
+The one-liners download and verify the scanner automatically. Python 3.10+ must already be installed. To skip the wizard, append your known local CIDR or application URL to the command.
 
 1. **Fast TCP discovery:** up to 512 asynchronous connections by default, directly to the selected web ports on the validated addresses. Each unique IP/port pair is checked once, even when several paths or virtual hosts share it. A check has a 350 ms timeout; timeouts and connection errors get one retry. No ping response or administrator access is required.
 2. **PHP inspection:** only TCP-open endpoints receive the normal HTTP(S) version/evidence checks, with up to 256 HTTP workers by default. The HTTP timeout remains 3 seconds. Known paths, virtual host headers and TLS SNI are preserved.
@@ -142,20 +152,16 @@ python3 phplume.py 192.168.1.0/24 --speed
 
 Concurrency is reduced when a POSIX process has insufficient file descriptors; the console and reports record the effective limits. High HTTP worker counts also need sufficient memory and OS thread/socket capacity. Speed mode keeps the existing scope caps and never expands the chosen network.
 
-**More aggressive:**
-
-```sh
-python3 phplume.py 192.168.1.0/24 --speed --workers 512 --discovery-workers 2048 --discovery-timeout 0.15 --discovery-retries 0
-```
-
-**Through the GitHub launcher:**
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/daMustermann/phplume/main/run.sh | sh -s -- 192.168.1.0/24 --speed
-```
+**More aggressive · Windows PowerShell**
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/daMustermann/phplume/main/run.ps1))) '192.168.1.0/24' '--speed'
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/daMustermann/phplume/v0.3.1/run.ps1))) '--speed' '--workers' '512' '--discovery-workers' '2048' '--discovery-timeout' '0.15' '--discovery-retries' '0'
+```
+
+**More aggressive · Linux / macOS**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/daMustermann/phplume/v0.3.1/run.sh | sh -s -- --speed --workers 512 --discovery-workers 2048 --discovery-timeout 0.15 --discovery-retries 0
 ```
 
 Agents can use the same options when the user authorizes the extra network load. Reports include `scope.scan_mode`, actual HTTP checks, `scope.discovery_skipped_requests` and a `discovery` object with each TCP outcome, connection attempts, phase duration and effective concurrency. A skipped endpoint has `probe_stage: "discovery"` and `http_attempted: false`; it must not be interpreted as a clean result.
